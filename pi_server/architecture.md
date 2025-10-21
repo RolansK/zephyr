@@ -1,8 +1,5 @@
 # Dual Raspberry Pi 5 Server Architecture
 
-## Overview
-This document describes the software architecture and setup for a dual Raspberry Pi 5 8GB system designed for home server applications.
-
 ## System Components
 
 ### Primary Node: Minecraft & Home Automation Server
