@@ -1,1 +1,1 @@
-# let's start this stuff
+# Open-source home hardware

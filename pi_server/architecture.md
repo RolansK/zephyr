@@ -47,7 +47,7 @@
 
 ### Secondary Node
 - **LLM Runtime**: Ollama
-- **Models**: TinyLLaMA, Phi-2, MoE variants
+- **Models**: Qwen3 0.6b
 - **API**: FastAPI/Flask wrapper
 - **Monitoring**: Basic system monitoring
 
