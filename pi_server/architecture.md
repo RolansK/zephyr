@@ -47,12 +47,14 @@
 
 ### Secondary Node
 - **LLM Runtime**: Ollama
-- **Models**: Qwen3 0.6b
+- **Models**: Qwen3 0.6b, Gemma 3 270M
 - **API**: FastAPI/Flask wrapper
 - **Monitoring**: Basic system monitoring
 
 ## Power Management
-- **Power Supply**: 27W USB-C PD power supplies for both nodes
+- **Power Supply**: Anker Nano 3 523 (47W GaN) with dual USB-C outputs:
+  - LLM Node: 27W port (unlimited performance)
+  - Master Pi: 20W port with CPU power limiting (1.5-1.8GHz, powersave governor)
 - **UPS**: Optional uninterruptible power supply
 - **Power Monitoring**: Home Assistant integration (future)
 
