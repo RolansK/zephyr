@@ -1,15 +1,17 @@
 # Raspberry Pi 5 Dual Server Bill of Materials (BOM)
 
-## Core Components
-
 ### Raspberry Pi Hardware
 1. **Raspberry Pi 5 8GB** - 90 EUR
+(https://www.raspberrystore.nl/PrestaShop/nl/raspberry-pi-5/508-raspberry-pi-5-8gb-5056561803326.html)
 
 1. **Raspberry Pi 5 4GB** - 65 EUR
+(https://www.raspberrystore.nl/PrestaShop/nl/raspberry-pi-5/507-raspberry-pi-5-4gb-5056561803319.html)
 
 2. **GeeekPi Heatsink** - 15 EUR * 2
+(https://www.amazon.nl/Heatsink-Raspberry-Aluminum-Dissaption-C-0048/dp/B0CM9JZKZZ/)
 
 3. **SanDisk Extreme Pro 64GB** - 13 EUR * 2
+(https://www.amazon.nl/-/en/MicroSDXC-Performance-RescuePRO-Software-Warranty/dp/B09X7BYSFG/?th=1)
 
 ### Power Supplies
 4. **Anker 523** - 27W / 20W USB-C PD power delivery - 35 EUR
