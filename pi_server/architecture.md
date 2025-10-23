@@ -4,9 +4,10 @@
 
 ### Primary Node: Minecraft & Home Automation Server
 - **Role**: Primary server running Minecraft server and home automation tasks
-- **OS**: Raspberry OS (64-bit) / Debian
+- **OS**: Raspberry OS Lite (64-bit)
 - **Key Services**:
   - Minecraft Server (Paper/Purpur recommended)
+  - 7-day backup retention with daily snapshots replicated to LLM node
   - Cron jobs for home automation
   - Network file sharing (Samba/NFS)
   - Basic monitoring and logging
@@ -14,7 +15,7 @@
 
 ### Secondary Node: LLM Experimentation Base
 - **Role**: Local LLM inference and experimentation
-- **OS**: Raspberry OS Lite (64-bit) minimal install
+- **OS**: Raspberry OS Lite (64-bit)
 - **Key Services**:
   - Ollama or similar LLM runtime
   - Tiny LLM models (<1B parameters)
@@ -30,12 +31,11 @@
 - **Security**: Basic firewall rules, SSH key-based authentication
 
 ## Storage
-- **Primary Node**:
-  - High-speed microSD card (256GB+)
-  - External USB 3.0 drive for Minecraft world backups
-- **Secondary Node**:
-  - High-speed microSD card (128GB+)
-  - Optional USB SSD for model storage
+- **Minecraft Node**:
+  - High-speed microSD card (64GB)
+
+- **LLM Node**:
+  - High-speed microSD card (64GB)
 
 ## Software Stack
 
@@ -63,9 +63,3 @@
 - Regular OS updates
 - Firewall configuration
 - Separate user accounts for services
-
-## Future Enhancements
-- Docker containerization
-- Kubernetes cluster (k3s)
-- Home Assistant integration
-- Automated backup system
