@@ -13,8 +13,9 @@
 3. **SanDisk Extreme Pro 64GB** - 13 EUR * 2
 (https://www.amazon.nl/-/en/MicroSDXC-Performance-RescuePRO-Software-Warranty/dp/B09X7BYSFG/?th=1)
 
-### Power Supplies
-4. **Anker 523** - 27W / 20W USB-C PD power delivery - 35 EUR
+### Power Supply
+4. **Raspberry Pi PSU** - 15 EUR * 2
+(https://www.raspberrystore.nl/PrestaShop/nl/raspberry-pi-5/511-raspberry-pi-27w-usb-c-power-supply-wit-eu-voor-raspberry-pi-5-5056561803401.html)
 
 5. **Uninterruptible Power Supply (UPS)** - $80
    - APC Back-UPS Pro 1500VA
