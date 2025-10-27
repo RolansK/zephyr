@@ -1,5 +1,3 @@
-# Raspberry Pi 5 Dual Server Bill of Materials (BOM)
-
 ### Raspberry Pi Hardware
 1. **Raspberry Pi 5 8GB** - 90 EUR
 (https://www.raspberrystore.nl/PrestaShop/nl/raspberry-pi-5/508-raspberry-pi-5-8gb-5056561803326.html)
@@ -41,13 +39,3 @@
     - TP-Link Kasa HS110 for power monitoring
 
 ## Total Estimated Cost: $510
-
-## Optional Upgrades
-
-### Performance Enhancements
-- **NVMe SSD Adapter**: $50 (for faster storage)
-- **Active Cooling Fan**: $20 (additional cooling)
-
-### Software & Development
-- **USB Flash Drive**: $15 (for OS installation)
-- **Ethernet Coupler**: $10 (for cable extension)
