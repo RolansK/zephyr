@@ -15,27 +15,19 @@
 4. **Raspberry Pi PSU** - 15 EUR * 2
 (https://www.raspberrystore.nl/PrestaShop/nl/raspberry-pi-5/511-raspberry-pi-27w-usb-c-power-supply-wit-eu-voor-raspberry-pi-5-5056561803401.html)
 
-5. **Uninterruptible Power Supply (UPS)** - $80
-   - APC Back-UPS Pro 1500VA
-   - Provides graceful shutdown protection
+5. **Brennenstuhl 4-way cable extender** - 20 EUR
+(https://www.kabelshop.nl/Brennenstuhl-Penaarde-stekkerdoos-met-overspanningsbeveiliging-Brennenstuhl-1-5-meter-4-voudig-13-500-A-Zwart-1153904314-i33832-t2517583.html)
 
 ## Networking
+**ZTE MC888 w/ Snapdragon X62** - 220 EUR
+
+(https://www.bol.com/nl/nl/p/zte-5g-cpe-mc888-unlocked-5g-wifi-home-router-fast-wifi-6-up-to-3-8gbps-premium-design-enargie-zuinige-router/9300000173733572/)
 
 ### High-Speed Connection
-6. **USB 3.0 to Ethernet Adapter** - $20
-   - For connecting LLM Pi to master Pi via USB 3.0 networking
+6. **USB-A to RJ-45 1m cable** - 25 EUR
+(https://www.onlinekabelshop.nl/goobay-usb-a-30-to-rj45-ethernet-cable-1-m.html)
 
-7. **Ethernet Cable** - $10
-   - Cat 6, 10ft cable for connecting master Pi to router
+7. **RJ45(m) <-> RJ45(m) 25cm cable** - 5 EUR
+(https://www.onlinekabelshop.nl/s-ftp-cat6a-10-gigabit-netwerkkabel-haaks-naar-bov-146974576.html)
 
-## Monitoring & Control
-
-### Remote Access
-13. **USB to Serial Adapter** - $15
-    - For headless setup and debugging
-
-### Power Monitoring
-14. **Smart Plug** - $25
-    - TP-Link Kasa HS110 for power monitoring
-
-## Total Estimated Cost: $510
+## Total Estimated Cost: 511 EUR
