@@ -15,8 +15,8 @@
 4. **Raspberry Pi PSU** - 15 EUR * 2
 (https://www.raspberrystore.nl/PrestaShop/nl/raspberry-pi-5/511-raspberry-pi-27w-usb-c-power-supply-wit-eu-voor-raspberry-pi-5-5056561803401.html)
 
-5. **Brennenstuhl 4-way cable extender** - 20 EUR
-(https://www.kabelshop.nl/Brennenstuhl-Penaarde-stekkerdoos-met-overspanningsbeveiliging-Brennenstuhl-1-5-meter-4-voudig-13-500-A-Zwart-1153904314-i33832-t2517583.html)
+5. **Brennenstuhl 4-way cable extender** - 15 EUR
+(https://www.onlinekabelshop.nl/brennenstuhl-bremounta-montage-stekkerdoos-met-4-r.html)
 
 ## Networking
 **ZTE MC888 w/ Snapdragon X62** - 220 EUR
