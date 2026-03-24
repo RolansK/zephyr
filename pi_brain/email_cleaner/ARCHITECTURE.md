@@ -1,725 +1,351 @@
-# Email Cleaner — **Architecture**
-> Purpose: Automatically clean Gmail and Proton Mail accounts using local LLM (Gemma 3 1B) to delete/move promotional and unwanted emails based on configurable rules. Runs on Raspberry Pi 5 (8GB).
+oss_life\pi_brain\email_cleaner\ARCHITECTURE.md
+```
+```markdown
+# Email Cleaner — Architecture
+
+> Automatically clean Gmail and Proton Mail using a local LLM. Runs on Raspberry Pi 5.
 
 ---
 
-## 0) Goals & Non-Goals
+## 0) Goals
 
-**Goals**
-
-* Local LLM processing (no cloud API calls, no data exfiltration)
-* Support both Gmail (OAuth2) and Proton Mail (Bridge IMAP)
-* Configurable rules in text/YAML files
-* "Valuable" emails exempt from future LLM checks
-* Daily or scheduled batch processing
-* Dry-run mode for testing rules before execution
-
-**Non-Goals**
-
-* No real-time filtering (batch only)
-* No email sending/composing
-* No modification of "valuable" marked emails without explicit command
-* No multi-account sync between Gmail and Proton
+* Local LLM only (no cloud, no data exfiltration)
+* Support Gmail (OAuth2) and Proton Mail (Bridge IMAP)
+* Configurable YAML rules for delete/keep/trash
+* Auto-exempt "valuable" emails from future checks
+* Dry-run mode; idempotent batch processing
+* Daily scheduled clean via systemd timer
 
 ---
 
-## 1) High-Level Overview
+## 1) Stack
 
-**Components**
+| Component | Choice |
+|-----------|--------|
+| Language | Go ≥ 1.22 |
+| LLM Serving | llama.cpp (native binary, no Ollama) |
+| Model | Qwen3.5 2B Q4_0 (~2GB) |
+| Database | SQLite (exemptions + audit log) |
+| Email | Gmail API + imapflow (Proton Bridge) |
+| Scheduler | systemd timer |
+| Container | Docker (Proton Bridge only) |
 
-1. **Proton Bridge (Docker)** — local IMAP/SMTP for Proton Mail
-2. **Gmail API Client** — OAuth2 authenticated Google API client
-3. **LLM Service** — llama.cpp or Ollama serving quantized Gemma 3 1B
-4. **Email Cleaner (Node.js)** — orchestrator: fetch → classify → action
-5. **SQLite Database** — state, exemptions, audit log
-6. **Scheduler** — systemd timer or node-cron
-
-**Data Flow**
-
-1. Scheduler triggers clean job at configured interval
-2. Load config: accounts, rules, limits, date range
- each account:
-  3. For - Fetch headers/previews (Gmail: API `messages.list` + `messages.get`; Proton: IMAP)
-   - Filter out already-exempt emails (by ID)
-   - Batch emails (e.g., 10-20 per batch for LLM context)
-   - Build prompt with rules + email previews
-   - Query local LLM
-   - Parse LLM response → actions (KEEP, DELETE, TRASH)
-4. Execute actions (Gmail: `messages.modify` (trash); Proton: IMAP MOVE)
-5. Update database: mark valuable emails, log actions
-6. Report summary
-
----
-
-## 2) Runtime & OS Assumptions
-
-* Raspberry Pi 5 (ARM64), Void Linux
-* See [pi_setup.md](../pi_setup.md) for OS installation and configuration
-* Node.js ≥ 20 LTS
-* Docker for Proton Bridge container
-* 8GB RAM: allocate ~3GB to LLM, rest to OS + app
-
----
-
-## 3) Directory Layout
+**Memory (Pi 5 / 8GB)**
 
 ```
-/srv/email-cleaner
+Qwen3.5 2B Q4_0: ~2GB model + 1GB KV cache
+OS + Go app:    ~1.5GB
+Headroom:       ~4.5GB
+```
+
+---
+
+## 2) Directory Layout
+
+```
+/srv/email-cleaner/
 ├── app/
-│   ├── src/
-│   │   ├── cli.ts
-│   │   ├── config/
-│   │   │   └── loader.ts
-│   │   ├── accounts/
-│   │   │   ├── gmail.ts
-│   │   │   └── proton.ts
-│   │   ├── llm/
-│   │   │   └── client.ts
-│   │   ├── cleaner/
-│   │   │   ├── fetcher.ts
-│   │   │   ├── classifier.ts
-│   │   │   └── executor.ts
-│   │   ├── store/
-│   │   │   ├── sqlite.ts
-│   │   │   └── exemptions.ts
-│   │   └── types.ts
-│   ├── package.json
-│   └── .env.example
+│   ├── main.go
+│   ├── go.mod / go.sum
+│   └── cmd/
+│       └── clean/
+│           └── main.go        # CLI entrypoint
 ├── config/
 │   └── default.yaml
 ├── rules/
-│   └── user-rules.yaml      # User's cleaning rules
+│   └── user-rules.yaml
 ├── data/
-│   ├── state.sqlite         # Idempotency & exemptions
+│   ├── state.db               # SQLite: exemptions, audit_log
 │   └── audit.log
+├── llm/
+│   └── qwen3.5-2b-q4_0.gguf
+├── proton-bridge/             # Docker volume
 └── ops/
-    ├── docker-compose.yml   # Proton Bridge
-    ├── systemd/
-    │   ├── email-clean.service
-    │   └── email-clean.timer
-    └── ollama/
-        └── start-llm.sh     # Gemma 3 1B startup script
+    ├── docker-compose.yml
+    └── systemd/
+        ├── email-clean.service
+        └── email-clean.timer
 ```
 
 ---
 
-## 4) Email Provider Integration
+## 3) Email Providers
 
-### 4.1 Gmail API (OAuth2)
+### 3.1 Gmail API (OAuth2)
 
-**Setup**
+* Gmail API v1 with `google-auth-library` equivalent in Go (`golang.org/x/oauth2`)
+* Scopes: `gmail.readonly`, `gmail.modify`
+* First run: OAuth2 device flow → store refresh token
 
-* Create Google Cloud project → enable Gmail API
-* Create OAuth2 credentials (desktop app)
-* First run: authenticate via URL, paste token
-* Store refresh token in `.env` or OS keyring
+### 3.2 Proton Mail Bridge (IMAP)
 
-**Libraries**
+* Proton Bridge runs in Docker (`ghcr.io/videocurio/proton-mail-bridge`)
+* Exposes IMAP on `127.0.0.1:12143`
+* App connects via `github.com/emersion/go-imap` or `imapflow`
 
-* `@googleapis/gmail` — official Google client
-* `google-auth-library` — OAuth handling
+### 3.3 Unified Interface
 
-**Rate Limits**
-
-* Gmail: 250 API calls/second/user (generous)
-* Batch fetch headers to minimize calls
-
-**Permissions required**
-
-```
-gmail.readonly    — read emails
-gmail.modify     — trash/delete emails
-```
-
-### 4.2 Proton Mail (Bridge IMAP)
-
-**Why Bridge**
-
-Proton does not offer public third-party API. Bridge provides local IMAP/SMTP access after authentication.
-
-**Compose**
-
-```yaml
-services:
-  proton-bridge:
-    image: ghcr.io/videocurio/proton-mail-bridge:latest
-    container_name: protonmail_bridge
-    restart: unless-stopped
-    volumes:
-      - /srv/email-cleaner/proton-bridge:/root
-    ports:
-      - "127.0.0.1:12143:143"   # IMAP STARTTLS
-    environment:
-      - TZ=Europe/Amsterdam
-```
-
-**First-run**
-
-```bash
-sudo docker compose up -d
-docker exec -it protonmail_bridge bridge --cli
-# login → 2FA → wait sync → `info` shows local IMAP creds
-```
-
-**Security**
-
-* Ports bound to 127.0.0.1 only
-* Local credentials used by app (not Proton credentials)
-
-### 4.3 Unified Account Interface
-
-```ts
-interface EmailProvider {
-  name: 'gmail' | 'proton';
-  fetchEmails(options: { limit?: number; since?: Date }): Promise<EmailPreview[]>;
-  trashEmail(messageId: string): Promise<void>;
-  moveToFolder(messageId: string, folder: string): Promise<void>;
+```go
+type EmailPreview struct {
+    ID       string
+    Subject  string
+    From     string
+    Date     time.Time
+    Snippet  string // ~200 chars
+    Labels   []string // Gmail labels or Proton folders
 }
 
-interface EmailPreview {
-  id: string;
-  subject: string;
-  from: string;
-  to: string;
-  date: Date;
-  snippet: string;  // First ~200 chars of body
-  labels?: string[]; // Gmail: labels; Proton: folders
+type EmailProvider interface {
+    FetchEmails(ctx context.Context, opts FetchOptions) ([]EmailPreview, error)
+    TrashEmail(ctx context.Context, id string) error
+    MoveEmail(ctx context.Context, id, folder string) error
 }
 ```
 
 ---
 
-## 5) Local LLM Integration
+## 4) LLM Integration
 
-### 5.1 Model Choice
-
-**Gemma 3 1B (quantized 4-bit)**
-
-* ~2.5GB memory footprint
-* ~5-15 tokens/second on Pi 5
-* Good enough for simple rule classification
-* Alternative: Gemma 3 3B for better accuracy (slower)
-
-**Why not cloud**
-
-* Privacy: emails never leave device
-* Cost: free after initial model download
-* Latency: acceptable for batch processing
-
-### 5.2 Serving Options
-
-**Option A: Ollama (recommended)**
+### 4.1 llama.cpp Server
 
 ```bash
-ollama run gemma3:1b-instruct-q4_0
-# REST API on localhost:11434
+./llama-server -m llm/qwen3.5-2b-q4_0.gguf \
+  -c 2048 --host 127.0.0.1 --port 8080
 ```
 
-**Option B: llama.cpp server**
+App queries via HTTP POST to `http://127.0.0.1:8080/completion`.
 
-```bash
-./server -m gemma-3-1b-it-q4_0.gguf -c 2048 -host 127.0.0.1 -port 8080
-```
+### 4.2 Prompt
 
-**Memory Calculation**
+**System**
 
 ```
-Gemma 3 1B Q4_0: ~1.4GB model + 1GB KV cache = ~2.5GB
-Pi 5 System: ~2GB
-Node.js App: ~200MB
-Headroom: ~3GB (comfortable)
+You are an email classification assistant. Classify each email as KEEP, DELETE, or TRASH.
+- DELETE: promotional, spam, marketing, newsletters user doesn't want
+- KEEP: transactional (orders, receipts, shipping), important, explicitly wanted
+- TRASH: unwanted but not clearly spam
+
+Return JSON array only: [{"id":"...","action":"KEEP|Delete|Trash","reason":"...","confidence":0.0}]
 ```
 
-### 5.3 Prompt Engineering
-
-**System Prompt**
-
-```
-You are an email classification assistant. Given email previews and user rules,
-classify each email as KEEP, DELETE, or TRASH.
-
-Rules:
-- Delete promotional, spam, marketing emails
-- Keep newsletters user explicitly wants
-- Keep transactional emails (orders, receipts, shipping)
-- Trash emails that are unwanted but not spam
-
-Return JSON array: [{"id": "...", "action": "KEEP|DELETE|TRASH", "reason": "..."}]
-```
-
-**User Prompt**
+**User**
 
 ```
 Rules:
-${userRules}
+${yamlRules}
 
-Emails to classify:
+Emails:
 ${emailPreviewsJSON}
-
-Respond ONLY with JSON array.
 ```
 
-### 5.4 LLM Client
-
-```ts
-// src/llm/client.ts
-import ollama from 'ollama';
-
-export async function classifyEmails(
-  emails: EmailPreview[],
-  rules: string
-): Promise<Classification[]> {
-  const prompt = buildPrompt(emails, rules);
-  
-  const response = await ollama.chat({
-    model: 'gemma3:1b-instruct-q4_0',
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: prompt }
-    ],
-    format: 'json',
-    options: {
-      temperature: 0.1,  // deterministic output
-      num_predict: 512   // limit response size
-    }
-  });
-
-  return parseResponse(response.message.content);
-}
-```
+**Params:** `temperature=0.1`, `num_predict=256`
 
 ---
 
-## 6) Rules Engine
+## 5) Rules Engine
 
-### 6.1 Rule Format (YAML)
+### 5.1 YAML Format
 
 ```yaml
-# rules/user-rules.yaml
 delete:
-  - patterns:
-      - "promotional"
-      - "marketing"
-      - "unsubscribe"
-      - "special offer"
-      - "limited time"
+  - patterns: ["promotional", "unsubscribe", "limited time"]
     keywords_in_subject: true
-  - from_domains:
-      - "*.marketing.com"
-      - "newsletter-*.xyz"
+  - from_domains: ["*.marketing.com", "newsletter-ads.xyz"]
   - labels: ["PROMOTIONS", "SPAM"]
 
 keep:
-  - from_addresses:
-      - "newsletter@substack.com"
-      - "updates@github.com"
-  - subjects:
-      - "Weekly digest"
-      - "Order confirmation"
-  - labels: ["IMPORTANT", "WORK"]
+  - from_addresses: ["github.com", "support@stripe.com"]
+  - subjects: ["order confirmation", "security alert"]
+  - labels: ["IMPORTANT"]
 
 trash:
-  - patterns:
-      - "you won"
-      - "claim your prize"
-      - "dear customer"  # generic spam
+  - patterns: ["you have won", "click here to claim"]
 ```
 
-### 6.2 Rule Pre-Filtering (Before LLM)
+### 5.2 Pre-Filtering
 
-Apply simple regex first to reduce LLM load:
+Apply regex/keyword rules **before** LLM:
+- `keep` match → KEEP immediately
+- `delete` match → DELETE immediately
+- Otherwise → send to LLM
 
-* If email matches `keep` rule → KEEP immediately
-* If email matches `delete` rule → DELETE immediately
-* Otherwise → send to LLM for nuance
+### 5.3 Confidence
 
-### 6.3 Confidence Thresholds
-
-```ts
-interface Classification {
-  id: string;
-  action: 'KEEP' | 'DELETE' | 'TRASH';
-  reason: string;
-  confidence: number;  // 0-1
+```go
+type Classification struct {
+    ID        string
+    Action    string // "keep", "delete", "trash"
+    Reason    string
+    Confidence float64 // 0.0–1.0
 }
-
-// If confidence < 0.7 → require manual review queue
 ```
+
+If LLM confidence < `0.7` → queue for manual review.
 
 ---
 
-## 7) "Valuable" Exemption System
+## 6) Exemption System
 
-### 7.1 Concept
-
-Emails previously classified as KEEP with high confidence are marked "valuable" and skipped in future runs.
-
-### 7.2 Database Schema
+### 6.1 Database Schema
 
 ```sql
 CREATE TABLE exemptions (
-  account TEXT,
-  email_id TEXT PRIMARY KEY,
-  classified_at TEXT,
-  reason TEXT,
-  manual_override BOOLEAN DEFAULT FALSE
+    account    TEXT,
+    email_id   TEXT PRIMARY KEY,
+    reason     TEXT,
+    confidence REAL,
+    created_at TEXT
 );
 
 CREATE TABLE audit_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  run_id TEXT,
-  account TEXT,
-  email_id TEXT,
-  action TEXT,
-  llm_reason TEXT,
-  confidence REAL,
-  timestamp TEXT
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id     TEXT,
+    account    TEXT,
+    email_id   TEXT,
+    action     TEXT,
+    reason     TEXT,
+    confidence REAL,
+    timestamp  TEXT
 );
 ```
 
-### 7.3 Flow
+### 6.2 Flow
 
-```
 1. Fetch emails
-2. Filter: WHERE email_id NOT IN (SELECT email_id FROM exemptions)
-3. Classify remaining
-4. For KEEP with confidence > 0.9 → INSERT INTO exemptions
-5. For manual review queue → skip, flag for user
-```
+2. Skip already-exempt IDs
+3. Apply pre-filter rules
+4. Remaining → LLM classification
+5. `keep` + confidence > `0.9` → insert into `exemptions`
+6. Log all actions
 
-### 7.4 Manual Commands
+### 6.3 CLI
 
 ```bash
-# Mark email as valuable (exempt from future checks)
-node app/dist/cli.js exempt --account gmail --email-id <id>
-
-# Remove exemption (re-evaluate in next run)
-node app/dist/cli.js unexempt --account gmail --email-id <id>
-
-# List exemptions
-node app/dist/cli.js exemptions --account proton
+email-cleaner exempt --account gmail --id <msg-id>
+email-cleaner unexempt --account gmail --id <msg-id>
+email-cleaner exemptions --account proton
 ```
 
 ---
 
-## 8) Configuration (YAML)
+## 7) Configuration
 
 ```yaml
-# config/default.yaml
 paths:
-  data: /srv/email-cleaner/data
+  data:  /srv/email-cleaner/data
   rules: /srv/email-cleaner/rules/user-rules.yaml
 
 accounts:
   gmail:
-    enabled: true
-    credentials_path: /srv/email-cleaner/data/gmail-token.json
-    scopes:
-      - https://www.googleapis.com/auth/gmail.readonly
-      - https://www.googleapis.com/auth/gmail.modify
-
+    enabled:           true
+    credentials_path:  /srv/email-cleaner/data/gmail-token.json
   proton:
-    enabled: true
-    host: 127.0.0.1
-    port: 12143
-    user: "local-bridge-user"
-    pass: "local-bridge-pass"
-    mailbox: "All Mail"
+    enabled:           true
+    host:              127.0.0.1
+    port:              12143
+    user:              "bridge-user"
+    pass:              "bridge-pass"
+    mailbox:           "All Mail"
 
 cleaning:
-  batch_size: 15           # emails per LLM call
-  max_emails_per_run: 100  # limit processing
-  date_range_days: 7       # look back X days
-  dry_run: false           # don't actually delete
+  batch_size:        10
+  max_per_run:       100
+  date_range_days:   7
+  dry_run:           true
   confidence_threshold: 0.7
-  auto_exempt_above: 0.9   # auto-exempt KEEP with confidence > 0.9
+  auto_exempt_above: 0.9
 
 llm:
-  provider: ollama          # ollama | llama-cpp
-  host: 127.0.0.1:11434
-  model: gemma3:1b-instruct-q4_0
-  timeout_ms: 30000
-
-exemptions:
-  auto_mark: true
-  manual_override_file: /srv/email-cleaner/data/manual-exempt.json
+  server_url:  http://127.0.0.1:8080
+  model:       qwen3.5-2b-q4_0
+  timeout_sec: 30
 
 scheduling:
-  enabled: true
-  interval: daily          # daily | hourly | custom
-  time: "08:00"           # HH:MM in system timezone
-  timezone: Europe/Amsterdam
+  enabled:   true
+  time:      "08:30"
+  timezone:  Europe/Amsterdam
 
 logging:
-  level: info
+  level:      info
   audit_path: /srv/email-cleaner/data/audit.log
 ```
 
-**Secrets**
-
-* Store OAuth tokens and Bridge credentials in `.env` or OS keyring
-* Config loader: `.env` → YAML → CLI flags
-
 ---
 
-## 9) CLI Commands
+## 8) CLI Commands
 
 ```bash
-# Dry-run with Gmail (no deletions)
-node app/dist/cli.js clean --account gmail --dry-run
-
-# Clean Proton, last 14 days, max 50 emails
-node app/dist/cli.js clean --account proton --days 14 --max 50
-
-# Force re-evaluate all emails (ignore exemptions)
-node app/dist/cli.js clean --all --force
-
-# Mark email as valuable
-node app/dist/cli.js exempt --account gmail --id <msg-id>
-
-# View audit log
-node app/dist/cli.js audit --since 2025-01-01
-
-# Status check
-node app/dist/cli.js status
+email-cleaner clean --account gmail --dry-run
+email-cleaner clean --account proton --days 14 --max 50
+email-cleaner clean --all --force
+email-cleaner audit --since 2025-01-01
+email-cleaner status
 ```
-
-**Flags**
-
-* `--account gmail|proton|all`
-* `--dry-run` — preview only
-* `--days N` — look back N days (default: 7)
-* `--max N` — limit emails processed
-* `--force` — ignore exemptions, re-evaluate all
 
 ---
 
-## 10) Scheduling (systemd)
-
-**Daily clean at 08:30**
+## 9) Scheduling
 
 ```ini
-# ops/systemd/email-clean.service
-[Unit]
-Description=Email Cleaner — Daily Clean
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-WorkingDirectory=/srv/email-cleaner
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/node app/dist/cli.js clean
-User=emailclean
-Group=emailclean
-
-# ops/systemd/email-clean.timer
-[Unit]
-Description=Run email cleaner daily
-
+# /etc/systemd/system/email-clean.timer
 [Timer]
 OnCalendar=*-*-* 08:30:00 Europe/Amsterdam
 Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-**Enable**
-
-```bash
-sudo cp -a ops/systemd/*.service ops/systemd/*.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now email-clean.timer
 ```
 
 ---
 
-## 11) Idempotency & Safety
+## 10) Idempotency & Safety
 
-**Safety Checks**
-
-1. **Dry-run default** — require `--confirm` flag for actual deletions
-2. **Confirmation prompt** — show summary before execution
-3. **Rate limiting** — max N emails per run
-4. **Audit log** — every action logged with timestamp
-5. **Rollback** — store message IDs in temp table; only commit after success
-
-**Duplicate Prevention**
-
-* Track processed `message_id` per run in SQLite
-* Skip already-processed emails if re-run
+* **Dry-run default** — `--confirm` flag required for actual deletions
+* **Confirmation prompt** — summary shown before execution
+* **Rate limits** — configurable `max_per_run`
+* **Audit log** — every action logged with `run_id`, timestamp
+* **Skip duplicates** — already-processed IDs skipped within same run
 
 ---
 
-## 12) Performance Notes (Pi 5)
+## 11) Security
 
-* Batch size 10-15 emails balances context vs. speed
-* Q4_0 quantization for optimal performance
-* Pre-warm model on startup
-
-**Network I/O**
-
-* Gmail: batch `messages.list` → parallel `messages.get` (max 10 concurrent)
-* Proton: IMAP IDLE or UID SEARCH + FETCH
-
-**Memory**
-
-* Monitor with `free -h`
-* Restart LLM service if memory > 7GB
-* Consider swap file for edge cases
+* All data stays local (no cloud calls)
+* Proton Bridge bound to loopback only
+* Gmail OAuth scopes minimal (`readonly` + `modify`)
+* Run as dedicated user `emailclean`
+* Tokens stored with `0600` permissions
 
 ---
 
-## 13) Security & Privacy
+## 12) Dependencies (Go)
 
-* **No data exfiltration** — all processing local
-* **Loopback only** — Proton Bridge ports bound to 127.0.0.1
-* **Minimal permissions** — Gmail scopes limited to read/modify
-* **Dedicated user** — run as `emailclean` with restricted filesystem access
-* **Encrypted storage** — consider LUKS for `/srv/email-cleaner/data`
-* **Token security** — OAuth tokens in `.env` with 0600 permissions
-
----
-
-## 14) Observability
-
-* **Logs**: JSON to stdout/journald (pino)
-* **Metrics per run**: emails processed, kept, deleted, trashed, errors
-* **Health file**: `data/health.json` with last run timestamp
-* **Alerting**: optional webhook on high error rate
-
----
-
-## 15) Testing Strategy
-
-**Unit tests**
-
-* Rule parser (YAML → AST)
-* LLM prompt builder
-* Response parser (JSON → classifications)
-* Database operations
-
-**Integration tests (mock providers)**
-
-* Gmail mock: simulate API responses
-* Proton mock: IMAP simulation
-* LLM mock: predefined responses
-
-**Fixture set**
-
-* 20 emails: 10 promotional (should delete), 5 important (keep), 5 edge cases (trash)
-* Run dry-run, compare expected vs. actual
-
----
-
-## 16) Dependencies (package.json)
-
-```json
-{
-  "name": "email-cleaner",
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "build": "tsc -p .",
-    "clean": "node app/dist/cli.js clean"
-  },
-  "dependencies": {
-    "@googleapis/gmail": "^9",
-    "better-sqlite3": "^9",
-    "commander": "^12",
-    "google-auth-library": "^9",
-    "imapflow": "^1",
-    "ollama": "^0.1",
-    "pino": "^9",
-    "yaml": "^2"
-  },
-  "devDependencies": {
-    "typescript": "^5"
-  }
-}
 ```
-
-**System dependencies**
-
-* `ollama` (binary) or `llama.cpp` compiled for ARM64
-* Docker (for Proton Bridge)
-
----
-
-## 17) First-Time Setup
-
-See [pi_setup.md](../pi_setup.md) for OS, Docker, and Ollama setup.
-
-```bash
-# 1. Clone and build
-cd /srv/email-cleaner
-npm install
-npm run build
-
-# 2. Configure Gmail OAuth
-# ... create credentials in Google Cloud Console
-cp .env.example .env
-# ... edit .env with tokens
-
-# 3. Test dry-run
-node app/dist/cli.js clean --account gmail --dry-run
-
-# 4. Enable scheduler
-sudo cp -a ops/systemd/*.service ops/systemd/*.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now email-clean.timer
+github.com/emersion/go-imap
+github.com/mattn/go-sqlite3
+gopkg.in/yaml.v3
+golang.org/x/oauth2
+github.com/googleapis/gmail-api-go
 ```
 
 ---
 
-## 18) Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| LLM out of memory | Use Q4_0 quantization, reduce batch_size |
-| Proton Bridge sync slow | Wait initial sync; increase Bridge container resources |
-| Gmail rate limit errors | Reduce `max_emails_per_run`, add delay between API calls |
-| False positives (important email deleted) | Lower confidence threshold, add to `keep` rules |
-| LLM timeout | Increase `timeout_ms`, reduce batch size |
-
----
-
-## Appendix A — Example User Rules
+## Appendix A — Example Rules
 
 ```yaml
 delete:
-  - patterns:
-      - "promotional"
-      - "unsubscribe"
-      - "limited time offer"
-    keywords_in_subject: true
-  - from_domains:
-      - "*.marketing.com"
-      - "newsletter-ads.com"
+  - patterns: ["promotional", "unsubscribe", "limited time offer"]
+  - from_domains: ["*.marketing.com"]
   - labels: ["PROMOTIONS"]
 
 keep:
-  - from_addresses:
-      - "github.com noreply"
-      - "aws-amazon.com"
-      - "support@stripe.com"
-  - subjects:
-      - "security alert"
-      - "order shipped"
-      - "invoice"
-  - labels: ["IMPORTANT", "INBOX"]
+  - from_addresses: ["github.com", "support@stripe.com"]
+  - subjects: ["order shipped", "security alert"]
 
 trash:
-  - patterns:
-      - "you have won"
-      - "dear customer"
-      - "click here to claim"
+  - patterns: ["you have won", "dear customer"]
 ```
 
 ---
 
-## Appendix B — Example Audit Log Entry
+## Appendix B — Audit Entry
 
 ```json
 {
@@ -727,10 +353,7 @@ trash:
   "account": "gmail",
   "email_id": "msg-12345",
   "action": "DELETE",
-  "llm_reason": "Promotional email with 'limited time offer' in subject",
+  "reason": "Promotional email with 'limited time offer'",
   "confidence": 0.95,
   "timestamp": "2025-01-15T08:32:15Z"
 }
-```
-
----
